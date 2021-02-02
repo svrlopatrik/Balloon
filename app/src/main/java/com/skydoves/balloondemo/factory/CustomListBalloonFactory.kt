@@ -18,8 +18,8 @@ package com.skydoves.balloondemo.factory
 
 import android.content.Context
 import androidx.lifecycle.LifecycleOwner
-import com.skydoves.balloon.ArrowConstraints
 import com.skydoves.balloon.ArrowOrientation
+import com.skydoves.balloon.ArrowPositionRules
 import com.skydoves.balloon.Balloon
 import com.skydoves.balloon.BalloonAnimation
 import com.skydoves.balloon.BalloonSizeSpec
@@ -34,12 +34,12 @@ class CustomListBalloonFactory : Balloon.Factory() {
       .setWidth(BalloonSizeSpec.WRAP)
       .setHeight(BalloonSizeSpec.WRAP)
       .setArrowOrientation(ArrowOrientation.TOP)
-      .setArrowConstraints(ArrowConstraints.ALIGN_ANCHOR)
+      .setArrowPositionRules(ArrowPositionRules.ALIGN_ANCHOR)
       .setArrowPosition(0.5f)
       .setArrowSize(10)
       .setTextSize(12f)
       .isRtlSupport(BalloonUtils.isRtlLayout())
-      .setCornerRadius(4f)
+      .setCornerRadius(6f)
       .setMarginRight(12)
       .setElevation(6)
       .setBackgroundColorResource(R.color.background800)
@@ -48,6 +48,8 @@ class CustomListBalloonFactory : Balloon.Factory() {
       .setOverlayColorResource(R.color.overlay)
       .setOverlayPadding(12.5f)
       .setDismissWhenShowAgain(true)
+      .setDismissWhenTouchOutside(false)
+      .setDismissWhenOverlayClicked(false)
       .setLifecycleOwner(lifecycle)
       .build()
   }

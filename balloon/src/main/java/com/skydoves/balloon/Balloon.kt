@@ -24,6 +24,7 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Point
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -42,7 +43,6 @@ import android.view.animation.Animation
 import android.view.animation.AnimationUtils
 import android.widget.FrameLayout
 import android.widget.PopupWindow
-import android.widget.TextView
 import androidx.annotation.AnimRes
 import androidx.annotation.ColorInt
 import androidx.annotation.ColorRes
@@ -54,6 +54,7 @@ import androidx.annotation.MainThread
 import androidx.annotation.Px
 import androidx.annotation.StringRes
 import androidx.annotation.StyleRes
+import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.ViewCompat
 import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.Lifecycle
@@ -78,6 +79,7 @@ import com.skydoves.balloon.extensions.getStatusBarHeight
 import com.skydoves.balloon.extensions.getViewPointOnScreen
 import com.skydoves.balloon.extensions.isFinishing
 import com.skydoves.balloon.extensions.px2Sp
+import com.skydoves.balloon.extensions.runOnAfterSDK21
 import com.skydoves.balloon.extensions.visible
 import com.skydoves.balloon.overlay.BalloonOverlayAnimation
 import com.skydoves.balloon.overlay.BalloonOverlayOval
@@ -161,18 +163,11 @@ class Balloon(
     initializeBackground()
     initializeBalloonRoot()
     initializeBalloonWindow()
+    initializeBalloonLayout()
     initializeBalloonContent()
     initializeBalloonOverlay()
     initializeBalloonListeners()
 
-    if (builder.layoutRes != NO_INT_VALUE) {
-      initializeCustomLayoutWithResource()
-    } else if (builder.layout != null) {
-      initializeCustomLayoutWithView()
-    } else {
-      initializeIcon()
-      initializeText()
-    }
     adjustFitsSystemWindows(binding.root)
 
     if (builder.lifecycleOwner == null && context is LifecycleOwner) {
@@ -206,12 +201,6 @@ class Balloon(
     with(binding.balloonArrow) {
       visible(builder.isVisibleArrow)
       layoutParams = FrameLayout.LayoutParams(builder.arrowSize, builder.arrowSize)
-      rotation = when (builder.arrowOrientation) {
-        ArrowOrientation.BOTTOM -> 180f
-        ArrowOrientation.TOP -> 0f
-        ArrowOrientation.LEFT -> -90f
-        ArrowOrientation.RIGHT -> 90f
-      }
       alpha = builder.alpha
       builder.arrowDrawable?.let { setImageDrawable(it) }
       setPadding(
@@ -225,26 +214,33 @@ class Balloon(
       } else {
         ImageViewCompat.setImageTintList(this, ColorStateList.valueOf(builder.backgroundColor))
       }
-      ViewCompat.setElevation(this, builder.arrowElevation)
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      runOnAfterSDK21 {
         outlineProvider = ViewOutlineProvider.BOUNDS
       }
       binding.balloonCard.post {
         onBalloonInitializedListener?.onBalloonInitialized(getContentView())
+
+        adjustArrowOrientationByRules(anchor)
+
         when (builder.arrowOrientation) {
           ArrowOrientation.BOTTOM -> {
+            rotation = 180f
             x = getArrowConstraintPositionX(anchor)
             y = binding.balloonCard.y + binding.balloonCard.height - SIZE_ARROW_BOUNDARY
+            ViewCompat.setElevation(this, builder.arrowElevation)
           }
           ArrowOrientation.TOP -> {
+            rotation = 0f
             x = getArrowConstraintPositionX(anchor)
             y = binding.balloonCard.y - builder.arrowSize + SIZE_ARROW_BOUNDARY
           }
           ArrowOrientation.LEFT -> {
+            rotation = -90f
             x = binding.balloonCard.x - builder.arrowSize + SIZE_ARROW_BOUNDARY
             y = getArrowConstraintPositionY(anchor)
           }
           ArrowOrientation.RIGHT -> {
+            rotation = 90f
             x = binding.balloonCard.x + binding.balloonCard.width - SIZE_ARROW_BOUNDARY
             y = getArrowConstraintPositionY(anchor)
           }
@@ -253,15 +249,42 @@ class Balloon(
     }
   }
 
+  /**
+   * Adjust the orientation of the arrow depending on the [ArrowOrientationRules].
+   *
+   * @param anchor A target anchor to be shown under the balloon.
+   */
+  private fun adjustArrowOrientationByRules(anchor: View) {
+    if (builder.arrowOrientationRules == ArrowOrientationRules.ALIGN_FIXED) return
+
+    val anchorRect = Rect()
+    anchor.getGlobalVisibleRect(anchorRect)
+
+    val location: IntArray = intArrayOf(0, 0)
+    bodyWindow.contentView.getLocationOnScreen(location)
+
+    if (builder.arrowOrientation == ArrowOrientation.TOP &&
+      location[1] < anchorRect.bottom
+    ) {
+      builder.setArrowOrientation(ArrowOrientation.BOTTOM)
+    } else if (builder.arrowOrientation == ArrowOrientation.BOTTOM &&
+      location[1] > anchorRect.top
+    ) {
+      builder.setArrowOrientation(ArrowOrientation.TOP)
+    }
+
+    initializeBalloonContent()
+  }
+
   private fun getArrowConstraintPositionX(anchor: View): Float {
     val balloonX: Int = binding.balloonContent.getViewPointOnScreen().x
     val anchorX: Int = anchor.getViewPointOnScreen().x
     val minPosition = getMinArrowPosition()
     val maxPosition = getMeasuredWidth() - minPosition - builder.marginRight - builder.marginLeft
     val arrowHalfSize = builder.arrowSize / 2f
-    return when (builder.arrowConstraints) {
-      ArrowConstraints.ALIGN_BALLOON -> binding.balloonWrapper.width * builder.arrowPosition - arrowHalfSize
-      ArrowConstraints.ALIGN_ANCHOR -> {
+    return when (builder.arrowPositionRules) {
+      ArrowPositionRules.ALIGN_BALLOON -> binding.balloonWrapper.width * builder.arrowPosition - arrowHalfSize
+      ArrowPositionRules.ALIGN_ANCHOR -> {
         when {
           anchorX + anchor.width < balloonX -> minPosition
           balloonX + getMeasuredWidth() < anchorX -> maxPosition
@@ -286,9 +309,9 @@ class Balloon(
     val minPosition = getMinArrowPosition()
     val maxPosition = getMeasuredHeight() - minPosition - builder.marginTop - builder.marginBottom
     val arrowHalfSize = builder.arrowSize / 2
-    return when (builder.arrowConstraints) {
-      ArrowConstraints.ALIGN_BALLOON -> binding.balloonWrapper.height * builder.arrowPosition - arrowHalfSize
-      ArrowConstraints.ALIGN_ANCHOR -> {
+    return when (builder.arrowPositionRules) {
+      ArrowPositionRules.ALIGN_BALLOON -> binding.balloonWrapper.height * builder.arrowPosition - arrowHalfSize
+      ArrowPositionRules.ALIGN_ANCHOR -> {
         when {
           anchorY + anchor.height < balloonY -> minPosition
           balloonY + getMeasuredHeight() < anchorY -> maxPosition
@@ -310,15 +333,16 @@ class Balloon(
     with(binding.balloonCard) {
       alpha = builder.alpha
       ViewCompat.setElevation(this, builder.elevation)
-      if (builder.backgroundDrawable == null) {
-        background = GradientDrawable().apply {
-          setColor(builder.backgroundColor)
-          cornerRadius = builder.cornerRadius
-        }
-        radius = builder.cornerRadius
-      } else {
-        background = builder.backgroundDrawable
+      background = builder.backgroundDrawable ?: GradientDrawable().apply {
+        setColor(builder.backgroundColor)
+        cornerRadius = builder.cornerRadius
       }
+      setPadding(
+        builder.paddingLeft,
+        builder.paddingTop,
+        builder.paddingRight,
+        builder.paddingBottom
+      )
     }
   }
 
@@ -327,7 +351,7 @@ class Balloon(
       isOutsideTouchable = true
       isFocusable = builder.isFocusable
       setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      runOnAfterSDK21 {
         elevation = builder.elevation
       }
     }
@@ -353,23 +377,17 @@ class Balloon(
   }
 
   private fun initializeBalloonContent() {
-    val paddingSize = (builder.arrowSize - SIZE_ARROW_BOUNDARY) * 2
+    val paddingSize = builder.arrowSize - SIZE_ARROW_BOUNDARY
     val elevation = builder.elevation.toInt()
     with(binding.balloonContent) {
       when (builder.arrowOrientation) {
-        ArrowOrientation.LEFT -> setPadding(paddingSize, elevation, 0, elevation)
-        ArrowOrientation.TOP -> setPadding(elevation, paddingSize, elevation, 0)
-        ArrowOrientation.RIGHT -> setPadding(0, elevation, paddingSize, elevation)
-        ArrowOrientation.BOTTOM -> setPadding(elevation, 0, elevation, paddingSize)
+        ArrowOrientation.LEFT -> setPadding(paddingSize, elevation, paddingSize, elevation)
+        ArrowOrientation.RIGHT -> setPadding(paddingSize, elevation, paddingSize, elevation)
+        ArrowOrientation.TOP ->
+          setPadding(elevation, paddingSize, elevation, paddingSize.coerceAtLeast(elevation))
+        ArrowOrientation.BOTTOM ->
+          setPadding(elevation, paddingSize, elevation, paddingSize.coerceAtLeast(elevation))
       }
-    }
-    with(binding.balloonText) {
-      setPadding(
-        builder.paddingLeft,
-        builder.paddingTop,
-        builder.paddingRight,
-        builder.paddingBottom
-      )
     }
   }
 
@@ -406,31 +424,41 @@ class Balloon(
           setMovementMethod(builder.movementMethod)
         }
       )
-      measureTextWidth(this)
+      measureTextWidth(this, binding.balloonContent)
     }
   }
 
-  private fun initializeCustomLayoutWithResource() {
-    binding.balloonCard.removeAllViews()
-    val inflater = LayoutInflater.from(context)
-    inflater.inflate(builder.layoutRes, binding.balloonCard, true)
+  private fun initializeBalloonLayout() {
+    if (hasCustomLayout()) {
+      initializeCustomLayout()
+    } else {
+      initializeIcon()
+      initializeText()
+    }
   }
 
-  private fun initializeCustomLayoutWithView() {
+  /** Check the [Balloon.Builder] has a custom layout [Balloon.Builder.layoutRes] or [Balloon.Builder.layout]. */
+  private fun hasCustomLayout(): Boolean {
+    return builder.layoutRes != null || builder.layout != null
+  }
+
+  /** Initializes the Balloon content using the custom layout. */
+  private fun initializeCustomLayout() {
+    val layout = builder.layoutRes?.let {
+      LayoutInflater.from(context).inflate(it, binding.balloonCard, false)
+    } ?: builder.layout ?: throw IllegalArgumentException("The custom layout is null.")
     binding.balloonCard.removeAllViews()
-    binding.balloonCard.addView(builder.layout)
+    binding.balloonCard.addView(layout)
+    traverseAndMeasureTextWidth(binding.balloonCard)
   }
 
   private fun initializeBalloonOverlay() {
-    if (builder.isVisibleOverlay) {
+    if (builder.isVisibleOverlay) with(overlayBinding.balloonOverlayView) {
+      overlayColor = builder.overlayColor
+      overlayPadding = builder.overlayPadding
+      overlayPosition = builder.overlayPosition
+      balloonOverlayShape = builder.overlayShape
       overlayWindow.isClippingEnabled = false
-      overlayBinding.root.setOnClickListener { dismiss() }
-      with(overlayBinding.balloonOverlayView) {
-        overlayColor = builder.overlayColor
-        overlayPadding = builder.overlayPadding
-        overlayPosition = builder.overlayPosition
-        balloonOverlayShape = builder.overlayShape
-      }
     }
   }
 
@@ -490,7 +518,9 @@ class Balloon(
     binding.balloon.post {
       Handler(Looper.getMainLooper()).postDelayed(
         {
-          getBalloonHighlightAnimation()?.let { animation -> binding.balloon.startAnimation(animation) }
+          getBalloonHighlightAnimation()?.let { animation ->
+            binding.balloon.startAnimation(animation)
+          }
         },
         builder.balloonHighlightAnimationStartDelay
       )
@@ -507,27 +537,42 @@ class Balloon(
     }
   }
 
+  /**
+   * Shows [Balloon] tooltips on the [anchor] with some initializations related to arrow, content, and overlay.
+   * The balloon will be shown with the [overlayWindow] if the anchorView's parent window is in a valid state.
+   * The size of the content will be measured internally, and it will affect calculating the popup size.
+   *
+   * @param block A lambda block for showing the [bodyWindow].
+   */
   @MainThread
   private inline fun show(anchor: View, crossinline block: () -> Unit) {
-    if (!isShowing && !destroyed && !context.isFinishing() &&
-      ViewCompat.isAttachedToWindow(anchor)
-    ) {
-      this.isShowing = true
-      this.builder.preferenceName?.let {
-        if (balloonPersistence.shouldShowUp(it, builder.showTimes)) {
-          balloonPersistence.putIncrementedCounts(it)
-        } else {
-          this.builder.runIfReachedShowCounts?.invoke()
-          return
+    anchor.post {
+      if (!isShowing &&
+        // If the balloon is already destroyed depending on the lifecycle,
+        // We should not allow showing the popupWindow, it's related to `relay()` method. (#46)
+        !destroyed &&
+        // We should check the current Activity is running.
+        // If the Activity is finishing, we can't attach the popupWindow to the Activity's window. (#92)
+        !context.isFinishing() &&
+        // We should check the contentView is already attached to the decorView or backgroundView in the popupWindow.
+        // Sometimes there is a concurrency issue between show and dismiss the popupWindow. (#149)
+        bodyWindow.contentView.parent == null
+      ) {
+        this.isShowing = true
+        this.builder.preferenceName?.let {
+          if (balloonPersistence.shouldShowUp(it, builder.showTimes)) {
+            balloonPersistence.putIncrementedCounts(it)
+          } else {
+            this.builder.runIfReachedShowCounts?.invoke()
+            return@post
+          }
         }
-      }
 
-      val dismissDelay = this.builder.autoDismissDuration
-      if (dismissDelay != NO_LONG_VALUE) {
-        dismissWithDelay(dismissDelay)
-      }
+        val dismissDelay = this.builder.autoDismissDuration
+        if (dismissDelay != NO_LONG_VALUE) {
+          dismissWithDelay(dismissDelay)
+        }
 
-      anchor.post {
         initializeText()
         this.binding.root.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
         this.bodyWindow.width = getMeasuredWidth()
@@ -545,9 +590,9 @@ class Balloon(
         applyBalloonAnimation()
         startBalloonHighlightAnimation()
         block()
+      } else if (builder.dismissWhenShowAgain) {
+        dismiss()
       }
-    } else if (builder.dismissWhenShowAgain) {
-      dismiss()
     }
   }
 
@@ -831,8 +876,8 @@ class Balloon(
     if (this.isShowing) {
       val dismissWindow: () -> Unit = {
         this.isShowing = false
-        this.overlayWindow.dismiss()
         this.bodyWindow.dismiss()
+        this.overlayWindow.dismiss()
       }
       if (this.builder.balloonAnimation == BalloonAnimation.CIRCULAR) {
         this.bodyWindow.contentView.circularUnRevealed(builder.circularDuration) {
@@ -941,31 +986,45 @@ class Balloon(
   }
 
   /**
-   * measures the width of a [TextView] and set the measured with.
-   * If the width of the parent XML layout is `WRAP_CONTENT`,
-   * and also the width of [TextView] in the parent layout is `WRAP_CONTENT`,
-   * this functionality will measure the width exactly.
+   * Measures the width of a [AppCompatTextView] and set the measured with.
+   * If the width of the parent XML layout is the `WRAP_CONTENT`, and the width of [AppCompatTextView]
+   * in the parent layout is `WRAP_CONTENT`, this method will measure the size of the width exactly.
    *
    * @param textView a target textView for measuring text width.
    */
-  fun measureTextWidth(textView: TextView) {
+  private fun measureTextWidth(textView: AppCompatTextView, rootView: View) {
     with(textView) {
       val widthSpec =
         View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
       val heightSpec =
         View.MeasureSpec.makeMeasureSpec(context.displaySize().y, View.MeasureSpec.UNSPECIFIED)
       measure(widthSpec, heightSpec)
-      layoutParams.width = getMeasuredTextWidth(measuredWidth)
+      maxWidth = getMeasuredTextWidth(measuredWidth, rootView)
+    }
+  }
+
+  /**
+   * Traverse a [ViewGroup]'s view hierarchy and measure each [AppCompatTextView] for measuring
+   * the specific height of the [AppCompatTextView] and calculating the proper height size of the balloon.
+   *
+   * @param parent a parent view for traversing and measuring.
+   */
+  private fun traverseAndMeasureTextWidth(parent: ViewGroup) {
+    (0 until parent.childCount).map { parent.getChildAt(it) }.forEach { child ->
+      if (child is AppCompatTextView) {
+        measureTextWidth(child, parent)
+      } else if (child is ViewGroup) {
+        traverseAndMeasureTextWidth(child)
+      }
     }
   }
 
   /** gets measured width size of the balloon popup text label. */
-  private fun getMeasuredTextWidth(measuredWidth: Int): Int {
+  private fun getMeasuredTextWidth(measuredWidth: Int, rootView: View): Int {
     val displayWidth = context.displaySize().x
-    val spaces = builder.paddingLeft + builder.paddingRight + context.dp2Px(24) +
-      if (builder.iconDrawable != null) {
-        builder.iconWidth + builder.iconSpace
-      } else 0
+    val spaces = rootView.paddingLeft + rootView.paddingRight + if (builder.iconDrawable != null) {
+      builder.iconWidth + builder.iconSpace
+    } else 0
 
     return when {
       builder.widthRatio != NO_Float_VALUE ->
@@ -1072,7 +1131,12 @@ class Balloon(
 
     @JvmField
     @set:JvmSynthetic
-    var arrowConstraints: ArrowConstraints = ArrowConstraints.ALIGN_BALLOON
+    var arrowPositionRules: ArrowPositionRules = ArrowPositionRules.ALIGN_BALLOON
+
+    @JvmField
+    @set:JvmSynthetic
+    var arrowOrientationRules: ArrowOrientationRules =
+      ArrowOrientationRules.ALIGN_ANCHOR
 
     @JvmField
     @set:JvmSynthetic
@@ -1200,7 +1264,7 @@ class Balloon(
 
     @JvmField @LayoutRes
     @set:JvmSynthetic
-    var layoutRes: Int = NO_INT_VALUE
+    var layoutRes: Int? = null
 
     @JvmField
     @set:JvmSynthetic
@@ -1519,15 +1583,26 @@ class Balloon(
     ): Builder = apply { this.arrowPosition = value }
 
     /**
-     * sets the constraints of the arrow positioning.
-     * [ArrowConstraints.ALIGN_BALLOON]: aligning based on the balloon.
-     * [ArrowConstraints.ALIGN_ANCHOR]: aligning based on the anchor.
+     * ArrowPositionRules determines the position of the arrow depending on the aligning rules.
+     *
+     * [ArrowPositionRules.ALIGN_BALLOON]: Align the arrow position depending on the balloon popup body.
+     * [ArrowPositionRules.ALIGN_ANCHOR]: Align the arrow position depending on an anchor.
      */
-    fun setArrowConstraints(value: ArrowConstraints) = apply { this.arrowConstraints = value }
+    fun setArrowPositionRules(value: ArrowPositionRules) = apply { this.arrowPositionRules = value }
 
     /** sets the arrow orientation using [ArrowOrientation]. */
     fun setArrowOrientation(value: ArrowOrientation): Builder = apply {
       this.arrowOrientation = value
+    }
+
+    /**
+     * ArrowOrientationRules determines the orientation of the arrow depending on the aligning rules.
+     *
+     * [ArrowOrientationRules.ALIGN_ANCHOR]: Align depending on the position of an anchor.
+     * [ArrowOrientationRules.ALIGN_FIXED]: Align to fixed [ArrowOrientation].
+     */
+    fun setArrowOrientationRules(value: ArrowOrientationRules) = apply {
+      this.arrowOrientationRules = value
     }
 
     /** sets a custom drawable of the arrow. */
@@ -1583,17 +1658,17 @@ class Balloon(
       this.arrowBottomPadding = context.dimenPixel(value)
     }
 
-    /** sets the padding of the arrow when aligning anchor using with [ArrowConstraints.ALIGN_ANCHOR]. */
+    /** sets the padding of the arrow when aligning anchor using with [ArrowPositionRules.ALIGN_ANCHOR]. */
     fun setArrowAlignAnchorPadding(@Dp value: Int): Builder = apply {
       this.arrowAlignAnchorPadding = context.dp2Px(value)
     }
 
-    /** sets the padding of the arrow the resource when aligning anchor using with [ArrowConstraints.ALIGN_ANCHOR]. */
+    /** sets the padding of the arrow the resource when aligning anchor using with [ArrowPositionRules.ALIGN_ANCHOR]. */
     fun setArrowAlignAnchorPaddingResource(@DimenRes value: Int): Builder = apply {
       this.arrowAlignAnchorPadding = context.dimenPixel(value)
     }
 
-    /** sets the padding ratio of the arrow when aligning anchor using with [ArrowConstraints.ALIGN_ANCHOR]. */
+    /** sets the padding ratio of the arrow when aligning anchor using with [ArrowPositionRules.ALIGN_ANCHOR]. */
     fun setArrowAlignAnchorPaddingRatio(value: Float): Builder = apply {
       this.arrowAlignAnchorPaddingRatio = value
     }
@@ -1840,13 +1915,19 @@ class Balloon(
     }
 
     /** sets the balloon highlight animation using [BalloonHighlightAnimation]. */
-    fun setBalloonHighlightAnimation(value: BalloonHighlightAnimation, startDelay: Long = 0L): Builder = apply {
+    fun setBalloonHighlightAnimation(
+      value: BalloonHighlightAnimation,
+      startDelay: Long = 0L
+    ): Builder = apply {
       this.balloonHighlightAnimation = value
       this.balloonHighlightAnimationStartDelay = startDelay
     }
 
     /** sets the balloon highlight animation using custom xml animation resource file. */
-    fun setBalloonHighlightAnimationResource(@AnimRes value: Int, startDelay: Long = 0L): Builder = apply {
+    fun setBalloonHighlightAnimationResource(
+      @AnimRes value: Int,
+      startDelay: Long = 0L
+    ): Builder = apply {
       this.balloonHighlightAnimationStyle = value
       this.balloonHighlightAnimationStartDelay = startDelay
     }

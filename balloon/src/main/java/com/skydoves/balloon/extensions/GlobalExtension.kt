@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-package com.skydoves.balloon
+package com.skydoves.balloon.extensions
+
+import android.os.Build
 
 /**
- * ArrowConstraints determines the constraints of the arrow positioning.
- * [ArrowConstraints.ALIGN_BALLOON]: aligning based on the balloon.
- * [ArrowConstraints.ALIGN_ANCHOR]: aligning based on the anchor.
+ * Runs a [block] lambda when the device's SDK level is 21 or higher.
+ *
+ * @param block A lambda that should be run when the device's SDK level is 21 or higher.
  */
-enum class ArrowConstraints {
-  /** Aligning based on the balloon. */
-  ALIGN_BALLOON,
-
-  /** Aligning based on the anchor. */
-  ALIGN_ANCHOR
+inline fun runOnAfterSDK21(block: () -> Unit) {
+  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+    block()
+  }
 }

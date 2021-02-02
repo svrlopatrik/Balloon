@@ -18,8 +18,8 @@ package com.skydoves.balloondemo.factory
 
 import android.content.Context
 import androidx.lifecycle.LifecycleOwner
-import com.skydoves.balloon.ArrowConstraints
 import com.skydoves.balloon.ArrowOrientation
+import com.skydoves.balloon.ArrowPositionRules
 import com.skydoves.balloon.Balloon
 import com.skydoves.balloon.BalloonAnimation
 import com.skydoves.balloon.BalloonSizeSpec
@@ -35,13 +35,14 @@ class ProfileBalloonFactory : Balloon.Factory() {
       setHeight(BalloonSizeSpec.WRAP)
       setLayout(R.layout.layout_custom_profile)
       setArrowSize(10)
+      setPadding(12)
       setArrowOrientation(ArrowOrientation.TOP)
-      setArrowConstraints(ArrowConstraints.ALIGN_ANCHOR)
+      setArrowPositionRules(ArrowPositionRules.ALIGN_ANCHOR)
       setArrowPosition(0.5f)
       isRtlSupport(BalloonUtils.isRtlLayout())
       setCornerRadius(4f)
       setElevation(6)
-      setBackgroundColorResource(R.color.white)
+      setBackgroundColorResource(R.color.background800)
       setBalloonAnimation(BalloonAnimation.CIRCULAR)
       setDismissWhenTouchOutside(true)
       setDismissWhenShowAgain(true)

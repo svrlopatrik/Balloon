@@ -973,6 +973,16 @@ class Balloon(
     )
   }
 
+  /**
+   * sets showing counts to reach its value immediately.
+   * * This method should be used with the [Builder.setPreferenceName] and [Builder.setShowCounts].
+   */
+  fun setShowCountsReached() {
+    this.builder.preferenceName?.let {
+      balloonPersistence.putCounts(it, builder.showTimes)
+    }
+  }
+
   /** gets measured width size of the balloon popup. */
   fun getMeasuredWidth(): Int {
     val displayWidth = context.displaySize().x
@@ -2039,7 +2049,7 @@ class Balloon(
 
     /**
      * sets a lambda for invoking after the preference showing counts is reached the goal.
-     * This method should be used ith the [setPreferenceName] and [setShowCounts].
+     * This method should be used with the [setPreferenceName] and [setShowCounts].
      *
      * @see (https://github.com/skydoves/balloon#persistence)
      *

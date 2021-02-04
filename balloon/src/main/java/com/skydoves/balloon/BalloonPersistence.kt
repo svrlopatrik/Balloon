@@ -16,11 +16,15 @@
 
 package com.skydoves.balloon
 
+import android.annotation.SuppressLint
 import android.content.Context
-import android.content.SharedPreferences
 
 /** BalloonPreferenceManager helps to persist showing counts. */
-internal class BalloonPersistence {
+internal class BalloonPersistence private constructor(context: Context) {
+
+  private val sharedPreferenceManager by lazy {
+    context.getSharedPreferences("com.skydoves.balloon", Context.MODE_PRIVATE)
+  }
 
   /** should show or not the popup. */
   fun shouldShowUp(name: String, counts: Int): Boolean {
@@ -32,33 +36,31 @@ internal class BalloonPersistence {
     putCounts(name, getPersistedCounts(name) + 1)
   }
 
+  /** puts show-up counts to the preference. */
+  fun putCounts(name: String, counts: Int) {
+    sharedPreferenceManager.edit().putInt(getPersistName(name), counts).apply()
+  }
+
+  /** clear all preferences. */
+  @SuppressLint("ApplySharedPref")
+  fun clearAllPersistence() {
+    sharedPreferenceManager.edit().clear().commit()
+  }
+
+  /** clear single preference. */
+  @SuppressLint("ApplySharedPref")
+  fun clearPreference(name: String) {
+    sharedPreferenceManager.edit().remove(getPersistName(name)).commit()
+  }
+
   /** gets show-up counts from the preference. */
   private fun getPersistedCounts(name: String): Int {
     return sharedPreferenceManager.getInt(getPersistName(name), 0)
   }
 
-  /** puts show-up counts to the preference. */
-  private fun putCounts(name: String, counts: Int) {
-    sharedPreferenceManager.edit().putInt(getPersistName(name), counts).apply()
-  }
+  private fun getPersistName(name: String) = SHOWED_UP + name
 
-  companion object {
-    @Volatile
-    private var instance: BalloonPersistence? = null
-    private lateinit var sharedPreferenceManager: SharedPreferences
+  companion object : SingletonHolder<BalloonPersistence, Context>(::BalloonPersistence) {
     private const val SHOWED_UP = "SHOWED_UP"
-
-    @JvmStatic
-    fun getInstance(context: Context): BalloonPersistence =
-      instance ?: synchronized(this) {
-        instance ?: BalloonPersistence().also {
-          instance = it
-          sharedPreferenceManager =
-            context.getSharedPreferences("com.skydoves.balloon", Context.MODE_PRIVATE)
-        }
-      }
-
-    @JvmStatic
-    fun getPersistName(name: String) = SHOWED_UP + name
   }
 }

@@ -16,7 +16,6 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 apply plugin: 'org.jetbrains.dokka'
 apply from: "$rootDir/dependencies.gradle"
-apply from: "$rootDir/publish.gradle"
 
 android {
     compileSdkVersion versions.compileSdk
@@ -30,6 +29,10 @@ android {
         buildConfig false
         viewBinding true
     }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
 }
 
 kotlin {
@@ -38,7 +41,7 @@ kotlin {
 
 dependencies {
     implementation "androidx.appcompat:appcompat:$versions.androidxAppcompat"
-    annotationProcessor "androidx.lifecycle:lifecycle-compiler:$versions.lifecycle"
+    implementation "androidx.lifecycle:lifecycle-common-java8:$versions.lifecycle"
 }
 
 dokkaHtml.configure {
@@ -49,9 +52,5 @@ dokkaHtml.configure {
     }
 }
 
-tasks.withType(Javadoc) {
-    excludes = ['**/*.kt']
-    options.addBooleanOption('Xdoclint:none', true)
-}
-
+apply plugin: "com.vanniktech.maven.publish"
 apply from: "$rootDir/spotless.gradle"

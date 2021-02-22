@@ -199,7 +199,6 @@ class Balloon(
 
   private fun initializeArrow(anchor: View) {
     with(binding.balloonArrow) {
-      visible(builder.isVisibleArrow)
       layoutParams = FrameLayout.LayoutParams(builder.arrowSize, builder.arrowSize)
       alpha = builder.alpha
       builder.arrowDrawable?.let { setImageDrawable(it) }
@@ -245,6 +244,7 @@ class Balloon(
             y = getArrowConstraintPositionY(anchor)
           }
         }
+        visible(true)
       }
     }
   }
@@ -332,6 +332,7 @@ class Balloon(
   private fun initializeBackground() {
     with(binding.balloonCard) {
       alpha = builder.alpha
+      radius = builder.cornerRadius
       ViewCompat.setElevation(this, builder.elevation)
       background = builder.backgroundDrawable ?: GradientDrawable().apply {
         setColor(builder.backgroundColor)
@@ -424,7 +425,7 @@ class Balloon(
           setMovementMethod(builder.movementMethod)
         }
       )
-      measureTextWidth(this, binding.balloonContent)
+      measureTextWidth(this, binding.balloonCard)
     }
   }
 
@@ -1034,16 +1035,17 @@ class Balloon(
     val displayWidth = context.displaySize().x
     val spaces = rootView.paddingLeft + rootView.paddingRight + if (builder.iconDrawable != null) {
       builder.iconWidth + builder.iconSpace
-    } else 0
+    } else 0 + builder.marginRight + builder.marginLeft + (builder.arrowSize * 2)
+    val maxTextWidth = displayWidth - spaces
 
     return when {
       builder.widthRatio != NO_Float_VALUE ->
         (displayWidth * builder.widthRatio).toInt() - spaces
       builder.width != BalloonSizeSpec.WRAP && builder.width <= displayWidth ->
         builder.width - spaces
-      measuredWidth < displayWidth - spaces -> measuredWidth
-      measuredWidth > displayWidth - spaces -> displayWidth - spaces
-      else -> displayWidth - spaces
+      measuredWidth < maxTextWidth -> measuredWidth
+      measuredWidth > maxTextWidth -> maxTextWidth
+      else -> maxTextWidth
     }
   }
 
@@ -1182,7 +1184,7 @@ class Balloon(
 
     @JvmField
     @set:JvmSynthetic
-    var arrowElevation: Float = context.dp2Px(2f)
+    var arrowElevation: Float = 0f
 
     @JvmField @ColorInt
     @set:JvmSynthetic
